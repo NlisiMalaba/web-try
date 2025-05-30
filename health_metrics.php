@@ -29,6 +29,7 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="assets/css/wearable-simulation.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
     <style>
@@ -170,6 +171,63 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
                     <p>Track and monitor your health metrics over time</p>
                 </div>
                 
+                <!-- Wearable Device Simulation Section -->
+                <div class="wearable-simulation-section">
+                    <h2>Wearable Device Simulation</h2>
+                    <div class="simulation-status">
+                        <div class="status-indicator">
+                            <i class="fas fa-circle-notch fa-spin"></i>
+                            <span>Checking...</span>
+                        </div>
+                        <div class="button-group">
+                            <button id="startSimulation" class="btn primary" title="Start generating simulated health data">
+                                <i class="fas fa-play"></i> Start Simulation
+                            </button>
+                            <button id="stopSimulation" class="btn danger" disabled title="Stop generating simulated health data">
+                                <i class="fas fa-stop"></i> Stop Simulation
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="simulation-metrics">
+                        <div class="metric-card">
+                            <h3>Latest Simulated Metrics</h3>
+                            <div class="metric-item">
+                                <span>Heart Rate</span>
+                                <span class="metric-value" id="simulatedHeartRate">-- bpm</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Blood Pressure</span>
+                                <span class="metric-value" id="simulatedBloodPressure">--/-- mmHg</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Oxygen Level</span>
+                                <span class="metric-value" id="simulatedOxygenLevel">-- %</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Temperature</span>
+                                <span class="metric-value" id="simulatedTemperature">-- °C</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Steps</span>
+                                <span class="metric-value" id="simulatedSteps">-- steps</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Calories Burned</span>
+                                <span class="metric-value" id="simulatedCalories">-- calories</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Sleep Duration</span>
+                                <span class="metric-value" id="simulatedSleep">-- hours</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Stress Level</span>
+                                <span class="metric-value" id="simulatedStress">--/5</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="metrics-container">
                     <!-- Add Metric Card -->
                     <div class="add-metric-card">
@@ -303,44 +361,17 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Include Flatpickr for date/time picker -->
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <!-- Include Toastr for notifications -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
     
     <script>
-        // Initialize date/time picker
+        // Initialize Flatpickr for datetime inputs
         flatpickr("input[type=datetime-local]", {
             enableTime: true,
             dateFormat: "Y-m-d H:i",
-            defaultDate: new Date()
         });
-        
-        // Handle metric type change
-        document.getElementById('metricType').addEventListener('change', function() {
-            const type = this.value;
-            const bloodPressureFields = document.getElementById('bloodPressureFields');
-            const singleValueFields = document.getElementById('singleValueFields');
-            const unitField = document.getElementById('unit');
-            
-            // Hide all fields first
-            bloodPressureFields.style.display = 'none';
-            singleValueFields.style.display = 'none';
-            
-            // Show relevant fields based on selection
-            if (type === 'blood_pressure') {
-                bloodPressureFields.style.display = 'block';
-                document.getElementById('systolic').required = true;
-                document.getElementById('diastolic').required = true;
-            } else if (type) {
-                singleValueFields.style.display = 'block';
-                document.getElementById('value').required = true;
-                
-                // Set default units based on metric type
-                switch(type) {
-                    case 'glucose':
-                        unitField.value = 'mg/dL';
-                        break;
-                    case 'weight':
-                        unitField.value = 'kg';
+
+        // Form submission
+        document.getElementById("addMetricForm").addEventListener("submit", async function(e) {
                         break;
                     case 'heart_rate':
                         unitField.value = 'bpm';

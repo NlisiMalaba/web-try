@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wearable Device Dashboard</title>
+    <link rel="stylesheet" href="assets/css/wearable.css">
+    <link rel="stylesheet" href="assets/css/buttons.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Wearable Device Dashboard</h1>
+        
+        <div class="status-section">
+            <div class="status-card">
+                <h2>Simulation Status</h2>
+                <div id="simulationStatus" class="status-indicator">
+                    <i class="fas fa-circle-notch fa-spin"></i>
+                    <span>Checking...</span>
+                </div>
+                <div class="button-group">
+                    <button id="startSimulation" class="btn primary" title="Start generating simulated health data">
+                        <i class="fas fa-play"></i> Start Simulation
+                    </button>
+                    <button id="stopSimulation" class="btn danger" disabled title="Stop generating simulated health data">
+                        <i class="fas fa-stop"></i> Stop Simulation
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="metrics-section">
+            <div class="metric-card">
+                <h3>Heart Rate</h3>
+                <div class="metric-value" id="heartRate">-- bpm</div>
+                <canvas id="heartRateChart"></canvas>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Blood Pressure</h3>
+                <div class="metric-value" id="bloodPressure">--/-- mmHg</div>
+                <canvas id="bloodPressureChart"></canvas>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Oxygen Level</h3>
+                <div class="metric-value" id="oxygenLevel">-- %</div>
+                <canvas id="oxygenLevelChart"></canvas>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Body Temperature</h3>
+                <div class="metric-value" id="temperature">-- °C</div>
+                <canvas id="temperatureChart"></canvas>
+            </div>
+        </div>
+
+        <div class="activity-section">
+            <div class="activity-card">
+                <h3>Steps</h3>
+                <div class="metric-value" id="steps">-- steps</div>
+                <canvas id="stepsChart"></canvas>
+            </div>
+            
+            <div class="activity-card">
+                <h3>Calories Burned</h3>
+                <div class="metric-value" id="calories">-- calories</div>
+                <canvas id="caloriesChart"></canvas>
+            </div>
+            
+            <div class="activity-card">
+                <h3>Sleep Duration</h3>
+                <div class="metric-value" id="sleep">-- hours</div>
+                <canvas id="sleepChart"></canvas>
+            </div>
+            
+            <div class="activity-card">
+                <h3>Stress Level</h3>
+                <div class="metric-value" id="stress">--/5</div>
+                <canvas id="stressChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="assets/js/wearable.js"></script>
+</body>
+</html>
