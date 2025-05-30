@@ -1,0 +1,21 @@
+[30-May-2025 04:16:31 Europe/Berlin] PHP Warning:  Undefined variable $success in C:\xamppp\htdocs\New Website\symptoms.php on line 366
+[30-May-2025 04:16:31 Europe/Berlin] PHP Warning:  Undefined variable $error in C:\xamppp\htdocs\New Website\symptoms.php on line 373
+[30-May-2025 04:16:31 Europe/Berlin] PHP Warning:  Undefined variable $symptoms in C:\xamppp\htdocs\New Website\symptoms.php on line 386
+[30-May-2025 04:16:31 Europe/Berlin] PHP Fatal error:  Uncaught TypeError: count(): Argument #1 ($value) must be of type Countable|array, null given in C:\xamppp\htdocs\New Website\symptoms.php:386
+Stack trace:
+#0 {main}
+  thrown in C:\xamppp\htdocs\New Website\symptoms.php on line 386
+[30-May-2025 04:16:55 Europe/Berlin] PHP Warning:  Undefined variable $success in C:\xamppp\htdocs\New Website\symptoms.php on line 366
+[30-May-2025 04:16:55 Europe/Berlin] PHP Warning:  Undefined variable $error in C:\xamppp\htdocs\New Website\symptoms.php on line 373
+[30-May-2025 04:16:55 Europe/Berlin] PHP Warning:  Undefined variable $symptoms in C:\xamppp\htdocs\New Website\symptoms.php on line 386
+[30-May-2025 04:16:55 Europe/Berlin] PHP Fatal error:  Uncaught TypeError: count(): Argument #1 ($value) must be of type Countable|array, null given in C:\xamppp\htdocs\New Website\symptoms.php:386
+Stack trace:
+#0 {main}
+  thrown in C:\xamppp\htdocs\New Website\symptoms.php on line 386
+[30-May-2025 04:17:07 Europe/Berlin] PHP Warning:  Undefined variable $success in C:\xamppp\htdocs\New Website\symptoms.php on line 435
+[30-May-2025 04:17:07 Europe/Berlin] PHP Warning:  Undefined variable $error in C:\xamppp\htdocs\New Website\symptoms.php on line 442
+[30-May-2025 04:17:07 Europe/Berlin] PHP Warning:  Undefined variable $symptoms in C:\xamppp\htdocs\New Website\symptoms.php on line 455
+[30-May-2025 04:17:07 Europe/Berlin] PHP Fatal error:  Uncaught TypeError: count(): Argument #1 ($value) must be of type Countable|array, null given in C:\xamppp\htdocs\New Website\symptoms.php:455
+Stack trace:
+#0 {main}
+  thrown in C:\xamppp\htdocs\New Website\symptoms.php on line 455
