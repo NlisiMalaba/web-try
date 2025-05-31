@@ -47,24 +47,98 @@ switch ($method) {
         $params[':start_date'] = $start_date;
         $params[':end_date'] = $end_date;
         
-        $query .= " ORDER BY recorded_at ASC";
-        
-        $stmt = $db->prepare($query);
-        
-        foreach ($params as $key => $value) {
-            $stmt->bindValue($key, $value);
-        }
-        
-        $stmt->execute();
-        $metrics = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // For demo purposes - add sample data if no metrics exist
-        if (empty($metrics) && !isset($_GET['type']) && !isset($_GET['start_date'])) {
-            $sampleData = generateSampleHealthMetrics($user_id);
-            echo json_encode(['data' => $sampleData]);
+        // Add limit if specified
+        if (isset($_GET['recent'])) {
+            $limit = (int)$_GET['recent'];
+            $query .= " ORDER BY recorded_at DESC LIMIT :limit";
+            $params[':limit'] = $limit;
         } else {
-            echo json_encode(['data' => $metrics]);
+            $query .= " ORDER BY recorded_at ASC";
         }
+        
+        try {
+            $stmt = $db->prepare($query);
+            
+            // Bind parameters including limit if it exists
+            foreach ($params as $key => $value) {
+                $paramType = PDO::PARAM_STR;
+                if ($key === ':limit') {
+                    $paramType = PDO::PARAM_INT;
+                } elseif (is_int($value)) {
+                    $paramType = PDO::PARAM_INT;
+                } elseif (is_bool($value)) {
+                    $paramType = PDO::PARAM_BOOL;
+                } elseif (is_null($value)) {
+                    $paramType = PDO::PARAM_NULL;
+                }
+                $stmt->bindValue($key, $value, $paramType);
+            }
+            
+            $stmt->execute();
+            $metrics = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // If recent parameter is set, include anomaly detection data
+            if (isset($_GET['recent'])) {
+                // Include the anomaly detection data from the database
+                foreach ($metrics as &$metric) {
+                    $anomalyStmt = $db->prepare(
+                        "SELECT is_anomaly, anomaly_score 
+                         FROM health_metrics 
+                         WHERE id = :metric_id"
+                    );
+                    $anomalyStmt->execute([':metric_id' => $metric['id']]);
+                    $anomalyData = $anomalyStmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($anomalyData) {
+                        $metric['is_anomaly'] = (bool)$anomalyData['is_anomaly'];
+                        $metric['anomaly_score'] = (float)$anomalyData['anomaly_score'];
+                    } else {
+                        $metric['is_anomaly'] = false;
+                        $metric['anomaly_score'] = 0.0;
+                    }
+                }
+                unset($metric); // Break the reference
+            }
+            
+            // For demo purposes - add sample data if no metrics exist (only for initial demo)
+            if (empty($metrics) && !isset($_GET['type']) && !isset($_GET['start_date']) && !isset($_GET['recent'])) {
+                $metrics = [
+                    [
+                        'id' => 1,
+                        'user_id' => $user_id,
+                        'metric_type' => 'blood_pressure',
+                        'value1' => '120',
+                        'value2' => '80',
+                        'unit' => 'mmHg',
+                        'recorded_at' => date('Y-m-d H:i:s', strtotime('-1 day')),
+                        'notes' => 'Morning reading',
+                        'is_anomaly' => false,
+                        'anomaly_score' => 0.0
+                    ],
+                    [
+                        'id' => 2,
+                        'user_id' => $user_id,
+                        'metric_type' => 'heart_rate',
+                        'value1' => '72',
+                        'value2' => null,
+                        'unit' => 'bpm',
+                        'recorded_at' => date('Y-m-d H:i:s', strtotime('-2 days')),
+                        'notes' => 'Resting heart rate',
+                        'is_anomaly' => false,
+                        'anomaly_score' => 0.0
+                    ]
+                ];
+            }
+            
+            echo json_encode([
+                'success' => true,
+                'data' => $metrics
+            ]);
+        } catch (PDOException $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to retrieve health metrics: ' . $e->getMessage()]);
+        }
+        
         break;
         
     case 'POST':

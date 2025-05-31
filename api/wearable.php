@@ -12,6 +12,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/process.php';
+require_once __DIR__ . '/anomaly_detection.php';
 
 /**
  * Get health metrics for a user
@@ -206,31 +207,101 @@ function runSimulation($simulationId, $userId) {
             
             // Save heart rate
             $stmt = $db->prepare("INSERT INTO health_metrics (user_id, metric_type, value1, unit, recorded_at) VALUES (:user_id, 'heart_rate', :value, 'bpm', NOW())");
+            
+            // Check for anomalies
+            $detector = new AnomalyDetector($db);
+            $anomalyResult = $detector->detectAnomalies($userId, [$metricsForAnomaly]);
+            $isAnomaly = $anomalyResult['is_anomaly'][0];
+            $anomalyScore = $anomalyResult['scores'][0];
+            
+                        // Prepare metrics for anomaly detection
+            $metricsForAnomaly = [
+                'heart_rate' => $metrics['heart_rate'],
+                'systolic' => $metrics['blood_pressure_systolic'],
+                'diastolic' => $metrics['blood_pressure_diastolic'],
+                'oxygen_level' => $metrics['oxygen_level'],
+                'temperature' => $metrics['temperature'],
+                'stress_level' => $metrics['stress_level']
+            ];
+            
+            // Initialize anomaly detection result variables
+            $isAnomaly = 0;
+            $anomalyScore = 0;
+            
+            // Try to detect anomalies if the class exists
+            if (class_exists('Phpml\AnomalyDetection\IsolationForest')) {
+                try {
+                    $detector = new AnomalyDetector($db);
+                    $anomalyResult = $detector->detectAnomalies($userId, [$metricsForAnomaly]);
+                    $isAnomaly = $anomalyResult['is_anomaly'][0] ? 1 : 0;
+                    $anomalyScore = $anomalyResult['scores'][0];
+                } catch (Exception $e) {
+                    // Log error but don't stop execution
+                    error_log("Anomaly detection error: " . $e->getMessage());
+                }
+            }
+            
+            // Store the metrics in the database
+            $stmt = $db->prepare("INSERT INTO health_metrics (user_id, metric_type, value1, value2, unit, is_anomaly, anomaly_score, notes, recorded_at) VALUES (:user_id, :metric_type, :value1, :value2, :unit, :is_anomaly, :anomaly_score, :notes, NOW())");
+            
+            // Save heart rate
             $stmt->execute([
                 ':user_id' => $userId,
-                ':value' => $metrics['heart_rate']
+                ':metric_type' => 'heart_rate',
+                ':value1' => $metrics['heart_rate'],
+                ':value2' => null,
+                ':unit' => 'bpm',
+                ':is_anomaly' => $isAnomaly,
+                ':anomaly_score' => $anomalyScore,
+                ':notes' => $isAnomaly ? 'Anomaly detected in heart rate' : 'Simulated data'
             ]);
             
             // Save blood pressure
-            $stmt = $db->prepare("INSERT INTO health_metrics (user_id, metric_type, value1, value2, unit, recorded_at) VALUES (:user_id, 'blood_pressure', :systolic, :diastolic, 'mmHg', NOW())");
             $stmt->execute([
                 ':user_id' => $userId,
-                ':systolic' => $metrics['blood_pressure_systolic'],
-                ':diastolic' => $metrics['blood_pressure_diastolic']
+                ':metric_type' => 'blood_pressure',
+                ':value1' => $metrics['blood_pressure_systolic'],
+                ':value2' => $metrics['blood_pressure_diastolic'],
+                ':unit' => 'mmHg',
+                ':is_anomaly' => $isAnomaly,
+                ':anomaly_score' => $anomalyScore,
+                ':notes' => $isAnomaly ? 'Anomaly detected in blood pressure' : 'Simulated data'
             ]);
             
             // Save oxygen level
-            $stmt = $db->prepare("INSERT INTO health_metrics (user_id, metric_type, value1, unit, recorded_at) VALUES (:user_id, 'oxygen_level', :value, '%', NOW())");
             $stmt->execute([
                 ':user_id' => $userId,
-                ':value' => $metrics['oxygen_level']
+                ':metric_type' => 'oxygen_level',
+                ':value1' => $metrics['oxygen_level'],
+                ':value2' => null,
+                ':unit' => '%',
+                ':is_anomaly' => $isAnomaly,
+                ':anomaly_score' => $anomalyScore,
+                ':notes' => $isAnomaly ? 'Anomaly detected in oxygen level' : 'Simulated data'
             ]);
             
             // Save temperature
-            $stmt = $db->prepare("INSERT INTO health_metrics (user_id, metric_type, value1, unit, recorded_at) VALUES (:user_id, 'temperature', :value, '°C', NOW())");
             $stmt->execute([
                 ':user_id' => $userId,
-                ':value' => $metrics['temperature']
+                ':metric_type' => 'temperature',
+                ':value1' => $metrics['temperature'],
+                ':value2' => null,
+                ':unit' => '°C',
+                ':is_anomaly' => $isAnomaly,
+                ':anomaly_score' => $anomalyScore,
+                ':notes' => $isAnomaly ? 'Anomaly detected in temperature' : 'Simulated data'
+            ]);
+            
+            // Save stress level
+            $stmt->execute([
+                ':user_id' => $userId,
+                ':metric_type' => 'stress_level',
+                ':value1' => $metrics['stress_level'],
+                ':value2' => null,
+                ':unit' => 'level',
+                ':is_anomaly' => $isAnomaly,
+                ':anomaly_score' => $anomalyScore,
+                ':notes' => $isAnomaly ? 'Anomaly detected in stress level' : 'Simulated data'
             ]);
             
             // Save step count in activity_logs

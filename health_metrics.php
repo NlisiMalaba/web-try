@@ -1,10 +1,17 @@
-<?php
+<?php if (isset($_SESSION['token'])): ?>
+<meta name="auth-token" content="<?php echo htmlspecialchars($_SESSION['token']); ?>">
+<?php endif; ?><?php
 session_start();
 
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
+}
+
+// Set the authentication token in localStorage
+if (isset($_SESSION['token'])) {
+    echo '<script>localStorage.setItem("token", "' . $_SESSION['token'] . '");</script>';
 }
 
 require_once 'config/database.php';
@@ -30,8 +37,28 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="assets/css/wearable-simulation.css">
+    <link rel="stylesheet" href="assets/css/anomaly-alerts.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    <script>
+    // Set auth token from PHP session to localStorage
+    document.addEventListener('DOMContentLoaded', function() {
+        <?php if (isset($_SESSION['token'])): ?>
+            localStorage.setItem('token', '<?php echo $_SESSION['token']; ?>');
+        <?php endif; ?>
+        
+        // Initialize toastr
+        toastr.options = {
+            "closeButton": true,
+            "progressBar": true,
+            "positionClass": "toast-top-right",
+            "timeOut": 3000
+        };
+    });
+    </script>
     <style>
         :root {
             --white: #ffffff;
@@ -166,6 +193,16 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
             </header>
             
             <div class="content">
+                <!-- Anomaly Alerts Section -->
+                <div id="anomalyAlerts" class="anomaly-alerts" style="display: none;">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Anomaly Detected!</strong>
+                        <span id="anomalyMessage">Unusual health metrics detected. Please review your recent data.</span>
+                        <button type="button" class="close" onclick="document.getElementById('anomalyAlerts').style.display='none';">&times;</button>
+                    </div>
+                </div>
+                
                 <div class="page-header">
                     <h1>Health Metrics</h1>
                     <p>Track and monitor your health metrics over time</p>
@@ -174,10 +211,10 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
                 <!-- Wearable Device Simulation Section -->
                 <div class="wearable-simulation-section">
                     <h2>Wearable Device Simulation</h2>
-                    <div class="simulation-status">
-                        <div class="status-indicator">
-                            <i class="fas fa-circle-notch fa-spin"></i>
-                            <span>Checking...</span>
+                    <div class="simulation-status" id="simulationStatusContainer">
+                        <div class="status-indicator" id="simulationStatus">
+                            <i class="fas fa-circle"></i>
+                            <span>Stopped</span>
                         </div>
                         <div class="button-group">
                             <button id="startSimulation" class="btn primary" title="Start generating simulated health data">
@@ -311,6 +348,102 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
                     </div>
                 </div>
                 
+                <!-- Wearable Simulation -->
+                <div class="wearable-simulation-section">
+                    <div class="simulation-status">
+                        <h2>Wearable Device Simulation</h2>
+                        <div class="status-indicator">
+                            <i class="fas fa-circle"></i>
+                            <span id="simulationStatus">Status: <span>Stopped</span></span>
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <button id="startSimulation" class="btn primary">
+                            <i class="fas fa-play"></i> Start Simulation
+                        </button>
+                        <button id="stopSimulation" class="btn danger" disabled>
+                            <i class="fas fa-stop"></i> Stop Simulation
+                        </button>
+                    </div>
+
+                    <div class="simulation-metrics">
+                        <h3>Current Metrics</h3>
+                        <div class="metric-card">
+                            <div class="metric-item">
+                                <span>Heart Rate</span>
+                                <span id="heartRate" class="metric-value">-- bpm</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Blood Pressure</span>
+                                <span id="bloodPressure" class="metric-value">--/-- mmHg</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Oxygen Level</span>
+                                <span id="oxygenLevel" class="metric-value">-- %</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Temperature</span>
+                                <span id="temperature" class="metric-value">-- °C</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Steps</span>
+                                <span id="steps" class="metric-value">-- steps</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Calories</span>
+                                <span id="calories" class="metric-value">-- calories</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Sleep</span>
+                                <span id="sleep" class="metric-value">-- hours</span>
+                            </div>
+                            <div class="metric-item">
+                                <span>Stress Level</span>
+                                <span id="stress" class="metric-value">--/5</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="simulation-charts" style="margin-top: 2rem;">
+                        <h3>Real-time Monitoring</h3>
+                        <div class="chart-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                            <div>
+                                <h4>Heart Rate</h4>
+                                <canvas id="heartRateChart" height="150"></canvas>
+                            </div>
+                            <div>
+                                <h4>Blood Pressure</h4>
+                                <canvas id="bloodPressureChart" height="150"></canvas>
+                            </div>
+                            <div>
+                                <h4>Oxygen Level</h4>
+                                <canvas id="oxygenLevelChart" height="150"></canvas>
+                            </div>
+                            <div>
+                                <h4>Temperature</h4>
+                                <canvas id="temperatureChart" height="150"></canvas>
+                            </div>
+                            <div>
+                                <h4>Steps</h4>
+                                <canvas id="stepsChart" height="150"></canvas>
+                            </div>
+                            <div>
+                                <h4>Calories</h4>
+                                <canvas id="caloriesChart" height="150"></canvas>
+                            </div>
+                            <div>
+                                <h4>Sleep</h4>
+                                <canvas id="sleepChart" height="150"></canvas>
+                            </div>
+                            <div>
+                                <h4>Stress Level</h4>
+                                <canvas id="stressChart" height="150"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Metrics History -->
                 <div class="metrics-history">
                     <div class="section-header">
@@ -357,11 +490,19 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
         </main>
     </div>
     
-    <!-- Include Chart.js -->
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Include Flatpickr for date/time picker -->
+    <!-- Flatpickr for date/time picker -->
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <!-- Toastr JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    <!-- Auth Token for JavaScript -->
+    <?php if (isset($_SESSION['token'])): ?>
+    <meta name="auth-token" content="<?php echo htmlspecialchars($_SESSION['token']); ?>">
+    <?php endif; ?>
+    
+    <!-- Health Metrics Charts -->
+    <script src="assets/js/health-metrics-charts.js"></script>
     
     <script>
         // Initialize Flatpickr for datetime inputs
@@ -370,24 +511,6 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
             dateFormat: "Y-m-d H:i",
         });
 
-        // Form submission
-        document.getElementById("addMetricForm").addEventListener("submit", async function(e) {
-                        break;
-                    case 'heart_rate':
-                        unitField.value = 'bpm';
-                        break;
-                    case 'oxygen_level':
-                        unitField.value = '%';
-                        break;
-                    case 'temperature':
-                        unitField.value = '°C';
-                        break;
-                    default:
-                        unitField.value = '';
-                }
-            }
-        });
-        
         // Handle form submission
         document.getElementById('addMetricForm').addEventListener('submit', function(e) {
             e.preventDefault();
@@ -530,18 +653,6 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
                     
                     updateRecentMetrics(data.data);
                 })
-                .catch(error => {
-                    console.error('Error loading recent metrics:', error);
-                });
-        }
-        
-        // Update metrics table
-        function updateMetricsTable(metrics) {
-            const tbody = document.getElementById('metricsTableBody');
-            tbody.innerHTML = '';
-            
-            if (metrics.length === 0) {
-                const tr = document.createElement('tr');
                 tr.innerHTML = '<td colspan="5" class="text-center">No metrics found for the selected period</td>';
                 tbody.appendChild(tr);
                 return;
@@ -858,7 +969,12 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
                         throw new Error(data.error);
                     }
                     updateRecentMetrics(data.data);
-                    updateMetricsChart(data.data);
+                    // Use the chart functions from the global HealthMetricsCharts object
+                    if (window.HealthMetricsCharts && typeof window.HealthMetricsCharts.updateMetricsChart === 'function') {
+                        window.HealthMetricsCharts.updateMetricsChart(data.data);
+                    } else {
+                        console.warn('HealthMetricsCharts.updateMetricsChart is not available');
+                    }
                 })
                 .catch(error => {
                     console.error('Error loading metrics:', error);
@@ -897,12 +1013,94 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
             }
         }
         
+        // Check for anomalies in recent metrics
+        async function checkForAnomalies() {
+            try {
+                const response = await fetch('api/health_metrics.php?recent=5');
+                const data = await response.json();
+                
+                if (data.success && data.data) {
+                    const anomalies = [];
+                    
+                    // Check each metric for anomalies
+                    data.data.forEach(metric => {
+                        if (metric.is_anomaly) {
+                            const metricName = metric.metric_type.replace(/_/g, ' ');
+                            anomalies.push(metricName);
+                            
+                            // Log the anomaly for debugging
+                            console.log(`Anomaly detected in ${metricName}:`, metric);
+                        }
+                    });
+                    
+                    // If we found anomalies, show the alert
+                    if (anomalies.length > 0) {
+                        const alertElement = document.getElementById('anomalyAlerts');
+                        const messageElement = document.getElementById('anomalyMessage');
+                        
+                        // Update the message with the list of anomalies
+                        let message = 'Potential health anomalies detected in: ';
+                        message += anomalies.join(', ');
+                        messageElement.textContent = message;
+                        
+                        // Show the alert
+                        alertElement.style.display = 'block';
+                        
+                        // Add critical class if multiple anomalies found
+                        if (anomalies.length > 1) {
+                            alertElement.querySelector('.alert').classList.add('alert-critical');
+                        }
+                        
+                        // Log to console for debugging
+                        console.log('Anomalies detected:', anomalies);
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking for anomalies:', error);
+            }
+        }
+        
+        // Call checkForAnomalies when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            checkForAnomalies();
+            
+            // Also check every 5 minutes
+            setInterval(checkForAnomalies, 5 * 60 * 1000);
+        });
+        
         // Initialize toastr
         toastr.options = {
             "closeButton": true,
             "progressBar": true,
             "positionClass": "toast-top-right"
         };
+    </script>
+    
+    <!-- Wearable Simulation Script -->
+    <script src="assets/js/wearable.js"></script>
+    
+    <script>
+        // Make sure the wearable simulation is properly initialized
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set initial state
+            const simulationStatus = document.getElementById('simulationStatus');
+            if (simulationStatus) {
+                const statusSpan = simulationStatus.querySelector('span');
+                const statusIcon = simulationStatus.querySelector('i');
+                
+                // Set initial state to stopped
+                statusSpan.textContent = 'Stopped';
+                statusIcon.className = 'fas fa-circle';
+                statusIcon.style.color = '#f44336';
+                
+                // Enable/disable buttons
+                const startBtn = document.getElementById('startSimulation');
+                const stopBtn = document.getElementById('stopSimulation');
+                
+                if (startBtn) startBtn.disabled = false;
+                if (stopBtn) stopBtn.disabled = true;
+            }
+        });
     </script>
 </body>
 </html>

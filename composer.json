@@ -1,0 +1,10 @@
+{
+    "require": {
+        "php-ai/php-ml": "^0.9.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Phpml\\": "vendor/php-ai/php-ml/src/"
+        }
+    }
+}
