@@ -11,13 +11,143 @@ require_once 'config/database.php';
 $database = new Database();
 $db = $database->getConnection();
 
-// Get user data
+// Get user data with notification settings
 $user_id = $_SESSION['user_id'];
-$query = "SELECT first_name, last_name, email FROM users WHERE id = :id";
+$query = "SELECT first_name, last_name, email, phone_number, sms_notifications_enabled, timezone 
+          FROM users WHERE id = :id";
 $stmt = $db->prepare($query);
 $stmt->bindParam(":id", $user_id);
 $stmt->execute();
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// Set default timezone if not set
+if (empty($user['timezone'])) {
+    $user['timezone'] = 'UTC';
+}
+
+// Handle notification settings update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_notification_settings'])) {
+    try {
+        $phone_number = !empty($_POST['phone_number']) ? preg_replace('/[^0-9+]/', '', $_POST['phone_number']) : null;
+        $sms_enabled = isset($_POST['sms_notifications_enabled']) ? 1 : 0;
+        $timezone = $_POST['timezone'] ?? 'UTC';
+        
+        $query = "UPDATE users SET 
+                 phone_number = :phone_number,
+                 sms_notifications_enabled = :sms_enabled,
+                 timezone = :timezone
+                 WHERE id = :user_id";
+        
+        $stmt = $db->prepare($query);
+        $stmt->bindParam(":phone_number", $phone_number);
+        $stmt->bindParam(":sms_enabled", $sms_enabled, PDO::PARAM_INT);
+        $stmt->bindParam(":timezone", $timezone);
+        $stmt->bindParam(":user_id", $user_id);
+        $stmt->execute();
+        
+        // Update user session data
+        $user['phone_number'] = $phone_number;
+        $user['sms_notifications_enabled'] = $sms_enabled;
+        $user['timezone'] = $timezone;
+        
+        $_SESSION['success'] = "Notification settings updated successfully!";
+        header("Location: medications.php");
+        exit();
+        
+    } catch (Exception $e) {
+        $error = "Error updating notification settings: " . $e->getMessage();
+    }
+}
+
+// Handle reminder creation/update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_reminder'])) {
+    try {
+        $medication_id = $_POST['medication_id'];
+        $reminder_time = $_POST['reminder_time'];
+        $days = isset($_POST['days']) ? implode(',', $_POST['days']) : '';
+        
+        // Verify medication belongs to user
+        $query = "SELECT id FROM medications WHERE id = :id AND user_id = :user_id";
+        $stmt = $db->prepare($query);
+        $stmt->bindParam(":id", $medication_id);
+        $stmt->bindParam(":user_id", $user_id);
+        $stmt->execute();
+        
+        if ($stmt->rowCount() === 0) {
+            throw new Exception("Medication not found or access denied");
+        }
+        
+        if (empty($days)) {
+            throw new Exception("Please select at least one day for the reminder");
+        }
+        
+        // Check if reminder already exists
+        $query = "SELECT id FROM medication_reminders 
+                 WHERE medication_id = :medication_id AND reminder_time = :reminder_time";
+        $stmt = $db->prepare($query);
+        $stmt->bindParam(":medication_id", $medication_id);
+        $stmt->bindParam(":reminder_time", $reminder_time);
+        $stmt->execute();
+        
+        if ($stmt->rowCount() > 0) {
+            // Update existing reminder
+            $query = "UPDATE medication_reminders 
+                     SET days_of_week = :days, 
+                         is_active = 1,
+                         updated_at = NOW()
+                     WHERE medication_id = :medication_id 
+                     AND reminder_time = :reminder_time";
+        } else {
+            // Create new reminder
+            $query = "INSERT INTO medication_reminders 
+                     (medication_id, user_id, reminder_time, days_of_week, timezone)
+                     VALUES (:medication_id, :user_id, :reminder_time, :days, :timezone)";
+        }
+        
+        $stmt = $db->prepare($query);
+        $stmt->bindParam(":medication_id", $medication_id);
+        $stmt->bindParam(":reminder_time", $reminder_time);
+        $stmt->bindParam(":days", $days);
+        
+        if (strpos($query, 'INSERT') !== false) {
+            $stmt->bindParam(":user_id", $user_id);
+            $stmt->bindParam(":timezone", $user['timezone']);
+        }
+        
+        $stmt->execute();
+        
+        $_SESSION['success'] = "Reminder saved successfully!";
+        header("Location: medications.php");
+        exit();
+        
+    } catch (Exception $e) {
+        $error = "Error saving reminder: " . $e->getMessage();
+    }
+}
+
+// Handle reminder deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_reminder'])) {
+    try {
+        $reminder_id = $_POST['reminder_id'];
+        
+        // Verify reminder belongs to user
+        $query = "DELETE mr FROM medication_reminders mr
+                 JOIN medications m ON m.id = mr.medication_id
+                 WHERE mr.id = :reminder_id AND m.user_id = :user_id";
+        
+        $stmt = $db->prepare($query);
+        $stmt->bindParam(":reminder_id", $reminder_id);
+        $stmt->bindParam(":user_id", $user_id);
+        $stmt->execute();
+        
+        $_SESSION['success'] = "Reminder deleted successfully!";
+        header("Location: medications.php");
+        exit();
+        
+    } catch (Exception $e) {
+        $error = "Error deleting reminder: " . $e->getMessage();
+    }
+}
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -98,6 +228,7 @@ $medications = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="assets/css/medications.css">
     <style>
         .medications-container {
             display: grid;
@@ -383,46 +514,177 @@ $medications = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <i class="fas fa-pills"></i> My Medications
                         </h2>
                         
-                        <?php if (empty($medications)): ?>
-                            <div class="no-medications">
-                                <i class="fas fa-pills" style="font-size: 2rem; margin-bottom: 1rem; color: #cbd5e1;"></i>
-                                <p>No medications added yet. Add your first medication to get started.</p>
-                            </div>
-                        <?php else: ?>
-                            <?php foreach ($medications as $med): ?>
-                                <div class="medication-card">
-                                    <div class="medication-header">
-                                        <h3 class="medication-name"><?php echo htmlspecialchars($med['name']); ?></h3>
-                                        <span class="medication-dosage"><?php echo htmlspecialchars($med['dosage']); ?></span>
-                                    </div>
-                                    
-                                    <div class="medication-meta">
-                                        <span><i class="far fa-clock"></i> <?php echo htmlspecialchars($med['frequency']); ?></span>
-                                        <?php if (!empty($med['prescribed_by'])): ?>
-                                            <span><i class="fas fa-user-md"></i> <?php echo htmlspecialchars($med['prescribed_by']); ?></span>
-                                        <?php endif; ?>
-                                    </div>
-                                    
-                                    <?php if (!empty($med['notes'])): ?>
-                                        <div class="medication-notes">
-                                            <strong>Notes:</strong> <?php echo nl2br(htmlspecialchars($med['notes'])); ?>
-                                        </div>
-                                    <?php endif; ?>
-                                    
-                                    <div class="medication-actions">
-                                        <button class="btn btn-edit">
-                                            <i class="fas fa-edit"></i> Edit
-                                        </button>
-                                        <form action="medications.php" method="POST" style="display: inline;">
-                                            <input type="hidden" name="medication_id" value="<?php echo $med['id']; ?>">
-                                            <button type="submit" name="delete_medication" class="btn btn-delete" onclick="return confirm('Are you sure you want to delete this medication?');">
-                                                <i class="fas fa-trash"></i> Delete
-                                            </button>
-                                        </form>
-                                    </div>
+                        <!-- Notification Settings -->
+                        <div class="notification-settings">
+                            <h3><i class="fas fa-bell"></i> Notification Settings</h3>
+                            <form method="POST" class="notification-form">
+                                <div class="form-group">
+                                    <label for="phone_number">Phone Number (with country code):</label>
+                                    <input type="tel" id="phone_number" name="phone_number" 
+                                           value="<?php echo htmlspecialchars($user['phone_number'] ?? ''); ?>" 
+                                           placeholder="+1234567890" required>
                                 </div>
-                            <?php endforeach; ?>
+                                
+                                <div class="form-group">
+                                    <label for="timezone">Time Zone:</label>
+                                    <select id="timezone" name="timezone" required>
+                                        <?php
+                                        $timezones = DateTimeZone::listIdentifiers(DateTimeZone::ALL);
+                                        foreach ($timezones as $tz) {
+                                            $selected = ($tz === ($user['timezone'] ?? 'UTC')) ? 'selected' : '';
+                                            echo "<option value=\"" . htmlspecialchars($tz) . "\" $selected>" . htmlspecialchars(str_replace('_', ' ', $tz)) . "</option>";
+                                        }
+                                        ?>
+                                    </select>
+                                </div>
+                                
+                                <div class="form-group checkbox-group">
+                                    <input type="checkbox" id="sms_notifications_enabled" name="sms_notifications_enabled" 
+                                           value="1" <?php echo !empty($user['sms_notifications_enabled']) ? 'checked' : ''; ?>>
+                                    <label for="sms_notifications_enabled">Enable SMS Notifications</label>
+                                </div>
+                                
+                                <button type="submit" name="update_notification_settings" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Save Settings
+                                </button>
+                            </form>
+                        </div>
+                        
+                        <?php if (empty($medications)): ?>
+                            <p class="no-data">No medications found. Add your first medication above.</p>
+                        <?php else: ?>
+                            <div class="medication-table-container">
+                                <table class="medication-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Medication</th>
+                                            <th>Dosage</th>
+                                            <th>Frequency</th>
+                                            <th>Reminders</th>
+                                            <th>Start Date</th>
+                                            <th>End Date</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php 
+                                        // Get reminders for all medications at once
+                                        $medication_ids = array_column($medications, 'id');
+                                        $placeholders = str_repeat('?,', count($medication_ids) - 1) . '?';
+                                        $query = "SELECT * FROM medication_reminders WHERE medication_id IN ($placeholders) ORDER BY reminder_time";
+                                        $stmt = $db->prepare($query);
+                                        $stmt->execute($medication_ids);
+                                        $all_reminders = $stmt->fetchAll(PDO::FETCH_GROUP | PDO::FETCH_ASSOC);
+                                        
+                                        foreach ($medications as $medication): 
+                                            $med_reminders = $all_reminders[$medication['id']] ?? [];
+                                        ?>
+                                            <tr>
+                                                <td><?php echo htmlspecialchars($medication['name']); ?></td>
+                                                <td><?php echo htmlspecialchars($medication['dosage']); ?></td>
+                                                <td><?php echo htmlspecialchars($medication['frequency']); ?></td>
+                                                <td class="reminders-cell">
+                                                    <?php if (!empty($med_reminders)): ?>
+                                                        <div class="reminders-list">
+                                                            <?php foreach ($med_reminders as $reminder): 
+                                                                $days = explode(',', $reminder['days_of_week']);
+                                                                $day_names = [];
+                                                                $day_map = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 7 => 'Sun'];
+                                                                foreach ($days as $day) {
+                                                                    if (isset($day_map[$day])) {
+                                                                        $day_names[] = $day_map[$day];
+                                                                    }
+                                                                }
+                                                                $time = new DateTime($reminder['reminder_time']);
+                                                            ?>
+                                                                <div class="reminder-item">
+                                                                    <span class="reminder-time">
+                                                                        <?php echo $time->format('g:i A'); ?>
+                                                                    </span>
+                                                                    <span class="reminder-days">
+                                                                        <?php echo implode(', ', $day_names); ?>
+                                                                    </span>
+                                                                    <form method="POST" class="inline-form" onsubmit="return confirm('Are you sure you want to delete this reminder?');">
+                                                                        <input type="hidden" name="reminder_id" value="<?php echo $reminder['id']; ?>">
+                                                                        <button type="submit" name="delete_reminder" class="btn-icon btn-icon-sm" title="Delete Reminder">
+                                                                            <i class="fas fa-times"></i>
+                                                                        </button>
+                                                                    </form>
+                                                                </div>
+                                                            <?php endforeach; ?>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    <button class="btn-text add-reminder-btn" data-medication-id="<?php echo $medication['id']; ?>" data-medication-name="<?php echo htmlspecialchars($medication['name']); ?>">
+                                                        <i class="fas fa-plus"></i> Add Reminder
+                                                    </button>
+                                                </td>
+                                                <td><?php echo date('M j, Y', strtotime($medication['start_date'])); ?></td>
+                                                <td><?php echo $medication['end_date'] ? date('M j, Y', strtotime($medication['end_date'])) : 'Ongoing'; ?></td>
+                                                <td class="actions-cell">
+                                                    <button class="btn-icon" title="Edit">
+                                                        <i class="fas fa-edit"></i>
+                                                    </button>
+                                                    <form method="POST" class="inline-form" onsubmit="return confirm('Are you sure you want to delete this medication and all its reminders?');">
+                                                        <input type="hidden" name="medication_id" value="<?php echo $medication['id']; ?>">
+                                                        <button type="submit" name="delete_medication" class="btn-icon" title="Delete">
+                                                            <i class="fas fa-trash"></i>
+                                                        </button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
                         <?php endif; ?>
+                        
+                        <!-- Add Reminder Modal -->
+                        <div id="reminderModal" class="modal">
+                            <div class="modal-content">
+                                <span class="close-modal">&times;</span>
+                                <h3>Add Reminder for <span id="medicationName"></span></h3>
+                                <form id="reminderForm" method="POST">
+                                    <input type="hidden" name="medication_id" id="medicationId">
+                                    
+                                    <div class="form-group">
+                                        <label for="reminder_time">Time:</label>
+                                        <input type="time" id="reminder_time" name="reminder_time" required>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>Repeat on:</label>
+                                        <div class="days-checkbox-group">
+                                            <?php 
+                                            $days = [
+                                                1 => 'Monday',
+                                                2 => 'Tuesday',
+                                                3 => 'Wednesday',
+                                                4 => 'Thursday',
+                                                5 => 'Friday',
+                                                6 => 'Saturday',
+                                                7 => 'Sunday'
+                                            ];
+                                            foreach ($days as $value => $label): 
+                                            ?>
+                                                <div class="day-checkbox">
+                                                    <input type="checkbox" id="day_<?php echo $value; ?>" 
+                                                           name="days[]" value="<?php echo $value; ?>"
+                                                           <?php echo in_array($value, [1,2,3,4,5,6,7]) ? 'checked' : ''; ?>>
+                                                    <label for="day_<?php echo $value; ?>"><?php echo substr($label, 0, 3); ?></label>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-actions">
+                                        <button type="button" class="btn btn-secondary close-modal-btn">Cancel</button>
+                                        <button type="submit" name="save_reminder" class="btn btn-primary">
+                                            <i class="fas fa-save"></i> Save Reminder
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -430,8 +692,81 @@ $medications = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
     
     <script>
-        // Set default start date to today
         document.addEventListener('DOMContentLoaded', function() {
+            // Set default start date to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('start_date').value = today;
+            
+            // Modal functionality
+            const modal = document.getElementById('reminderModal');
+            const addReminderBtns = document.querySelectorAll('.add-reminder-btn');
+            const closeModalBtn = document.querySelector('.close-modal');
+            const closeModalBtns = document.querySelectorAll('.close-modal-btn');
+            const medicationNameSpan = document.getElementById('medicationName');
+            const medicationIdInput = document.getElementById('medicationId');
+            
+            // Open modal when clicking Add Reminder button
+            addReminderBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const medicationId = this.getAttribute('data-medication-id');
+                    const medicationName = this.getAttribute('data-medication-name');
+                    
+                    medicationNameSpan.textContent = medicationName;
+                    medicationIdInput.value = medicationId;
+                    
+                    // Set default time to next hour
+                    const now = new Date();
+                    const nextHour = new Date(now.getTime() + 60 * 60 * 1000);
+                    const hours = String(nextHour.getHours()).padStart(2, '0');
+                    const minutes = String(nextHour.getMinutes()).padStart(2, '0');
+                    document.getElementById('reminder_time').value = `${hours}:${minutes}`;
+                    
+                    // Show modal
+                    modal.style.display = 'flex';
+                    document.body.style.overflow = 'hidden'; // Prevent scrolling
+                });
+            });
+            
+            // Close modal when clicking the X button
+            closeModalBtn.addEventListener('click', closeModal);
+            
+            // Close modal when clicking Cancel button
+            closeModalBtns.forEach(btn => {
+                btn.addEventListener('click', closeModal);
+            });
+            
+            // Close modal when clicking outside the modal content
+            window.addEventListener('click', function(event) {
+                if (event.target === modal) {
+                    closeModal();
+                }
+            });
+            
+            // Form validation
+            const reminderForm = document.getElementById('reminderForm');
+            if (reminderForm) {
+                reminderForm.addEventListener('submit', function(e) {
+                    const checkboxes = this.querySelectorAll('input[type="checkbox"]:checked');
+                    if (checkboxes.length === 0) {
+                        e.preventDefault();
+                        alert('Please select at least one day for the reminder.');
+                    }
+                });
+            }
+            
+            // Phone number formatting
+            const phoneInput = document.getElementById('phone_number');
+            if (phoneInput) {
+                phoneInput.addEventListener('input', function(e) {
+                    // Only allow numbers, +, and backspace
+                    this.value = this.value.replace(/[^0-9+]/g, '');
+                });
+            }
+            
+            function closeModal() {
+                modal.style.display = 'none';
+                document.body.style.overflow = 'auto'; // Re-enable scrolling
+            }
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('start_date').value = today;
         });
